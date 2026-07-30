@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+
+# Virtual env
+venv/
+env/
+.venv/
+
+# Logs
+*.log
+realtime.log
+webui.log
+smoke.log
+download.log
+install.log
+
+# Notes (用户生成的笔记,默认排除 — 隐私考虑)
+notes.md
+
+# Audio test outputs
+*.wav
+*.mp3
+*.flac
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 模型大文件(不进 git,用户自己下)
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# 临时文件
+*.tmp
+*.bak
+*.backup
+
+# 进度存档(可加进去)
+# 明天的指令.md
