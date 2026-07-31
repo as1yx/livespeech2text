@@ -1,7 +1,8 @@
 # LiveSpeech2Text Web UI Launcher
 # - spinner animation while model loads
-# - opens browser when port 7860 is listening
+# - opens browser when port is listening
 # - shows live log of webui.log
+# v4: accepts LST_PORT env var (default 7860)
 
 $ErrorActionPreference = "Continue"
 $ProjectRoot = $PSScriptRoot
@@ -16,10 +17,32 @@ function Spinner-Line($label) {
     return "[$ch] $label"
 }
 
+# Resolve port from LST_PORT env var
+$Port = 7860
+$PortSource = "default"
+$raw = $env:LST_PORT
+if ($raw) {
+    try {
+        $candidate = [int]$raw
+        if ($candidate -ge 1024 -and $candidate -le 65535) {
+            $Port = $candidate
+            $PortSource = "env LST_PORT=$candidate"
+        } else {
+            Write-Host "[!] LST_PORT=$candidate out of range 1024-65535, using default 7860" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[!] LST_PORT='$raw' is not a number, using default 7860" -ForegroundColor Yellow
+    }
+}
+
+# Check port availability
+$PortInUse = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  LiveSpeech2Text - Web UI" -ForegroundColor Cyan
-Write-Host "  http://localhost:7860" -ForegroundColor Cyan
+Write-Host "  http://localhost:$Port" -ForegroundColor Cyan
+Write-Host "  Port: $Port ($PortSource)" -ForegroundColor DarkCyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -33,11 +56,10 @@ if (-not (Test-Path $VenvPython)) {
     exit 1
 }
 
-# 2. Check if 7860 already in use
-$PortInUse = Get-NetTCPConnection -LocalPort 7860 -State Listen -ErrorAction SilentlyContinue
+# 2. If port already in use, just open browser
 if ($PortInUse) {
-    Write-Host "[!] Port 7860 already in use. Opening browser..." -ForegroundColor Yellow
-    Start-Process "http://localhost:7860"
+    Write-Host "[!] Port $Port already in use. Opening browser..." -ForegroundColor Yellow
+    Start-Process "http://localhost:$Port"
     Read-Host "Press Enter to exit"
     exit 0
 }
@@ -57,6 +79,7 @@ $psi.CreateNoWindow = $true
 $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
 $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
 $psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8"
+$psi.EnvironmentVariables["LST_PORT"] = "$Port"
 
 $proc = [System.Diagnostics.Process]::Start($psi)
 $script:proc = $proc
@@ -78,9 +101,9 @@ Write-Host "      Log: $LogFile" -ForegroundColor DarkGray
 Write-Host "[2/3] Loading model (first time: 30-60s, second time: 5-10s)..." -ForegroundColor Green
 $startTime = Get-Date
 
-while (-not $proc.HasExited -and -not (Get-NetTCPConnection -LocalPort 7860 -State Listen -ErrorAction SilentlyContinue)) {
+while (-not $proc.HasExited -and -not (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)) {
     $elapsed = [int]((Get-Date) - $startTime).TotalSeconds
-    $label = "Loading model and starting service... ({0}s)" -f $elapsed
+    $label = "Loading model and starting service on port $Port... ({0}s)" -f $elapsed
     Write-Host "`r$(Spinner-Line $label)            " -NoNewline -ForegroundColor Yellow
     Start-Sleep -Milliseconds 250
 }
@@ -97,8 +120,8 @@ if ($proc.HasExited) {
 
 $loadTime = [int]((Get-Date) - $startTime).TotalSeconds
 Write-Host ""
-Write-Host "[3/3] Service is ready! (loaded in ${loadTime}s)" -ForegroundColor Green
-Start-Process "http://localhost:7860"
+Write-Host "[3/3] Service is ready on port $Port! (loaded in ${loadTime}s)" -ForegroundColor Green
+Start-Process "http://localhost:$Port"
 
 # 5. Live log
 Write-Host ""

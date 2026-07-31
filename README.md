@@ -97,7 +97,7 @@ Tested on an RTX 4060 Laptop (8 GB VRAM, driver 591.74, CUDA 13.1):
 - First launch needs internet access to download the 4.5 GB model
 - The web UI segments audio every ~2 seconds; this is **near** real-time, not sub-second word-by-word
 - No speaker diarization - overlapping speakers in one recording will be transcribed as a mash
-- Windows PowerShell 5.1 renders UTF-8 Chinese as mojibake; open the project in **Git Bash** (recommended) or PowerShell 7+ instead
+- Windows PowerShell 5.1 renders UTF-8 Chinese as mojibake; open the project in **Git Bash** (recommended) or PowerShell 7+ instead. See [POWERSHELL.md](POWERSHELL.md) for details and how to upgrade.
 - 8 GB VRAM is enough for **one** 1.7B model; running two ASR instances in parallel will OOM
 
 ## License
@@ -197,7 +197,7 @@ pip install -i https://pypi.tuna.tsinghua.edu.cn/simple transformers accelerate 
 - Web UI 是 2 秒分段流式,不是字级别延迟
 - 不做说话人分离,多人混说会糊
 - 8GB 显存装不下两份 1.7B 模型,只能开一个实例
-- **强烈建议用 Git Bash 或 PowerShell 7+**,Windows PowerShell 5.1 中文会乱码
+- **强烈建议用 Git Bash 或 PowerShell 7+**,Windows PowerShell 5.1 中文会乱码。详见 [POWERSHELL.md](POWERSHELL.md)
 
 ## 📜 License
 

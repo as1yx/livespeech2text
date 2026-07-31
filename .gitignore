@@ -23,6 +23,7 @@ install.log
 # Notes (用户生成的笔记/翻译记录,默认排除 — 隐私考虑)
 notes.md
 translations.md
+notes_ai.md
 
 # Audio test outputs
 *.wav
@@ -51,6 +52,12 @@ _tmp_ms/
 # Hugging Face cache(用户机器上可能有,别 push)
 huggingface/
 
+# AI 整理(DeepSeek 网页自动化) — 本地测试用,不上传
+ai_organize.py
+test_deepseek.py
+.deepseek_browser_data/
+deepseek_test_screenshot.png
+
 # 临时文件
 *.tmp
 *.bak
@@ -58,3 +65,6 @@ huggingface/
 
 # 进度存档(可加进去)
 # 明天的指令.md
+
+# 用户端口配置(本地的,不上传)
+config.json
