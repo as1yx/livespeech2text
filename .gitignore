@@ -45,6 +45,11 @@ desktop.ini
 *.pt
 *.pth
 
+# 翻译模型本地缓存(ModelScope 镜像下载)
+_tmp_ms/
+# Hugging Face cache(用户机器上可能有,别 push)
+huggingface/
+
 # 临时文件
 *.tmp
 *.bak

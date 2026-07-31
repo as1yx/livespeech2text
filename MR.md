@@ -1,160 +1,128 @@
-# feat: LiveSpeech2Text - 本地化实时语音转写笔记工具
+# feat: LiveSpeech2Text v3 - i18n UI + real-time translation
 
-## 📌 TL;DR
+## TL;DR
 
-把 Qwen3-ASR-1.7B 语音识别模型(阿里通义千问开源,1.7B 参数)部署到 Windows 本地,
-**麦克风说话 → 浏览器 Web UI 实时显示文字 → 自动写入 `notes.md`**。
-全程离线、零 API 费用、零数据外传。
+- Adds a Chinese / English UI language switch (English by default; brand name "LiveSpeech2Text" stays as-is)
+- Adds explicit recognition-language selection (Chinese / Chinese-English / English-Chinese / English / Auto)
+- Adds a real-time translation pane next to the notes pane, with 4 translation modes
+- Drops the unused CLI version (`start.bat`, `note_taker.py`) - Web UI is the single entry point
+- Translators: Helsinki-NLP/opus-mt-zh-en + opus-mt-en-zh, FP16, lazy-loaded only when translation is enabled
 
-## 🎯 Why
+## Why
 
-日常会议、采访、灵感记录场景下:
-- 商业 ASR(Whisper API、Azure、阿里云语音):贵、慢、要联网
-- 桌面录音笔:要后处理手敲文字
-- 开源 Whisper / faster-whisper:配置复杂、中文效果参差
+The Web UI (v2) only had one language for both ASR and the UI itself. A user wanted to:
 
-Qwen3-ASR-1.7B 优势:
-- 阿里最新开源,中文/英文/22 种方言一模型搞定
-- 1.7B 规模,精度比 0.6B 大幅提升,FP16 半精度只需要 ~4GB 显存
-- 支持 52 种语言,自动检测,中英混合不打架
+1. Switch the whole UI between English and Chinese without losing any functionality
+2. Tell the model explicitly which language to expect (cleaner output, less hallucination)
+3. See a live translation next to the original transcript so they could review a Chinese meeting while reading English, or vice versa
 
-## 🔧 What Changed
+The earlier CLI version (`note_taker.py` + `start.bat`) duplicated everything the Web UI did and was unusable when both were loaded (8 GB VRAM only fits one Qwen3-ASR-1.7B instance). Removed to reduce surface area.
 
-### 新增
-- `note_taker.py` - 命令行常驻版(麦克风实时拾音 + 准流式识别 + 写 `notes.md`)
-- `web_ui.py` - **Gradio Web UI 版**(v2,带增益控制),浏览器打开 `http://localhost:7860` 即可
-- `smoke_test.py` - 单次冒烟测试脚本(3 秒录音 + 一次识别)
-- `check_audio.py` - 列可用音频设备,排查麦克风
-- `start.bat` - 启动命令行版
-- `start_webui.bat` - 启动 Web UI 版(双击即用,无超时)
-- `明天的指令.md` - 部署进度存档(交付后归档)
-- `MR.md` - 本文件
+## What Changed
 
-### 关键设计
-- **跳过 vLLM** — Windows 装 vLLM 太折腾,改用 Transformers 后端直接推理
-- **模型走 ModelScope 镜像** — huggingface.co 国内不通,Qwen 自家 ModelScope 走国内直连,稳
-- **CUDA 12.1** — 适配 RTX 4060 (驱动 591.74 / CUDA 13.1) 用 PyTorch cu121,向上兼容
-- **VAD 简单能量阈值** — 不用 webrtcvad 这种重依赖,0.008 阈值 + 0.6s 停顿触发
-- **Web UI 流式 Audio** — gradio 6.x 的 `stream_every=2.0` API,每 2 秒切一段送 ASR
-- **增益控制(增益痛点)** — v2 加了手动增益滑块(1-8x) + 自动 AGC,解决笔记本麦克风声音小的问题
-- **状态栏显示 RMS** — 让用户直观看到原始音量 + 放大后音量,方便调参
+### New
 
-## 📊 性能 / 验证
+- **`web_ui.py` v3** - rebuilt UI with i18n dict; locale switch updates all labels in place via `gr.update()`
+- **`Translator` class** - lazy-loads `MarianMTModel` on first use, thread-pool for non-blocking translation
+- **`langdetect`** dependency (50 KB, used to decide "mostly Chinese" vs "mostly English" cases)
+- **`sacremoses`** dependency (Marian tokenizer dependency)
+- **`translations.md`** output file - translations appended with timestamps, kept separate from `notes.md`
+- **Translation models** - downloaded from ModelScope mirror to `_tmp_ms/Helsinki-NLP/opus-mt-{zh-en,en-zh}/` (gitignored)
 
-测试环境:
-- GPU: NVIDIA GeForce RTX 4060 Laptop GPU (8GB VRAM)
-- 驱动: 591.74 / CUDA 13.1
-- 模型: Qwen3-ASR-1.7B (FP16)
-- 实际显存占用: ~3.5GB
+### Changed
 
-实测:
-- 首次加载到 GPU: ~33 秒
-- 30 秒音频 → 2.3 秒识别(**RTF ≈ 0.08**,实时因子 8%)
-- 中文普通话识别率: 主观测试 90%+
-- 中英混合、语气词(呃/啊)都能识别
+- **`README.md`** - English version on top, Chinese below, with a `<a name="中文版">` anchor for cross-link
+- **`MR.md`** - this file (replaces the v1 draft)
+- **`.gitignore`** - added `notes.md` and `translations.md` (privacy: never push user transcripts)
 
-实际跑通案例(2026-07-30 14:46-14:55):
-- 9 分钟连续口述 → 244 条笔记
-- 平均 2 秒一段(gradio streaming 默认)
+### Removed
 
-## 🚀 How to Run
+- `start.bat` - dead-code CLI launcher (couldn't run alongside the Web UI on 8 GB VRAM)
+- `note_taker.py` - the script it called; Web UI covers all of its functionality
 
-### 前置
-- NVIDIA GPU 8GB+(其它配置理论可跑但需要调小 batch)
+## How to Test
+
+### Prerequisites (already met on the original dev machine)
+- NVIDIA GPU 8 GB+ (RTX 3060 / 4060 or better)
 - Python 3.12
-- Windows 10/11
+- Windows 10 / 11
 
-### 一键启动
-```cmd
-:: 双击 start_webui.bat
-:: 浏览器打开 http://localhost:7860
-:: 点 🎤 麦克风,说话,文字自动进右边的笔记框
+### 1. Install new dependencies
+```bash
+venv\Scripts\python.exe -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple langdetect sacremoses
 ```
 
-### 命令行版(无 UI)
+### 2. Download translation models (~600 MB total, automatic on first translation)
+The translator lazy-loads on first use; no manual download needed. Models are cached under `_tmp_ms/Helsinki-NLP/`.
+
+### 3. Run
 ```cmd
-:: 双击 start.bat
-:: 或:venv\Scripts\python note_taker.py
-:: Ctrl+C 退出,笔记写在 notes.md
+:: Double-click start_webui.bat
+:: A PowerShell window appears with a loading spinner
+:: Browser opens to http://localhost:7860 (auto)
+:: Click the microphone icon, allow browser mic permission
+:: Speak, pause 1-2 s
 ```
 
-### 调声音小的问题
-- Web UI 里的"手动增益倍数"滑块拖到 2-5x
-- 或勾选"自动归一化 (AGC)",让系统自动拉音量
-- 状态栏的 RMS 数值参考:正常说话应在 0.05-0.3
+### 4. Verify the new controls
+- Top-right: switch `UI Language` between `English` and `中文` - all labels update in place
+- Left column: pick `Recognition Language` from 5 options
+- Left column: pick `Translation` from 5 options:
+  - `Off` (default)
+  - `Mostly Chinese -> English` - only translates when the segment is mostly Chinese
+  - `Mostly English -> Chinese` - vice versa
+  - `All -> English` / `All -> Chinese` - unconditional
+- Right column: a `Translation` textbox shows up, growing as translations arrive
 
-## 📁 文件清单
+### 5. Verify file outputs
+- `notes.md` - timestamped original-language transcripts
+- `translations.md` - timestamped translations, one line per translated segment
+
+## File Layout
 
 ```
 livespeech2text/
-├── web_ui.py            # Web UI 主入口(推荐用这个)
-├── note_taker.py        # 命令行版
-├── smoke_test.py        # 单次冒烟测试
-├── check_audio.py       # 音频设备列表
-├── start_webui.bat      # Web UI 启动器(双击)
-├── start.bat            # 命令行启动器
-├── notes.md             # 实时笔记输出(用户生成)
-├── 明天的指令.md        # 部署进度存档
-└── venv/                # Python 虚拟环境(已装好所有依赖)
+├── web_ui.py              # v3, i18n + translation (only entry point)
+├── start_webui.bat        # double-click launcher
+├── start_webui.ps1        # PowerShell script with loading spinner
+├── check_audio.py         # lists available input devices
+├── smoke_test.py          # one-shot ASR sanity check
+├── MR.md                  # this file
+├── README.md              # English (top) + Chinese (below)
+├── .gitignore             # excludes venv/, *.log, *.safetensors, notes.md, translations.md
+├── translations.md        # git-ignored, runtime output
+├── notes.md               # git-ignored, runtime output
+└── venv/                  # git-ignored, Python env with all deps (~5 GB)
 ```
 
-### 依赖
-- torch 2.5.1+cu121
-- torchaudio 2.5.1+cu121
-- transformers 4.57.6
-- accelerate 1.12.0
-- qwen-asr 0.0.6
-- sounddevice, soundfile
-- gradio 6.17
-- numpy, librosa, modelscope
+## Known Limitations
 
-模型文件(~4.5GB):
-- `C:\Users\29335\.cache\modelscope\models\Qwen--Qwen3-ASR-1.7B\`
+- **First-time model load is slow** - Qwen3-ASR-1.7B is 4.5 GB; first launch needs 30-70 s on a typical NVMe. Subsequent launches benefit from OS file cache (5-10 s).
+- **Only one ASR instance fits in 8 GB VRAM** - the Web UI and the (now-removed) CLI share the same 1.7 B model. Running both simultaneously OOMs.
+- **Web UI is 2-second segmented, not sub-second streaming** - audio is sliced every ~2 s before ASR. Sub-second word-by-word streaming would need vLLM, which doesn't install on Windows; WSL2 works but is out of scope here.
+- **opus-mt quality is decent but not SOTA** - longer sentences sometimes lose nuance, especially for code-switched Chinese-English text. If quality matters, swap to a larger translation model (e.g. NLLB-200-distilled-600M) - the Translator class is the only place that needs to change.
+- **No speaker diarization** - overlapping speakers in one recording become a single muddled transcript.
+- **Windows PowerShell 5.1 renders UTF-8 Chinese as mojibake** - use Git Bash or PowerShell 7+ for terminal work. The Gradio UI itself is rendered by the browser and is fine.
+- **Translation fires on every recognized segment** - 1-2 s after each ASR chunk. Not strictly "real-time" (word-level) but feels real-time in normal speech.
 
-## ⚠️ 已知限制
+## Out-of-scope (deferred)
 
-1. **首次启动慢** — 模型首次搬到 GPU 要 30-70 秒,之后秒开
-2. **PowerShell 控制台乱码** — 终端默认 GBK,UTF-8 中文显示乱码但**文件内容正确**
-   - 解决办法:用 VSCode/Notepad++/Typora 打开 `notes.md`,或 `Get-Content -Encoding UTF8`
-3. **系统后台 1 小时自动停** — 如果用我的 task 跑,1 小时到点会死
-   - 解决办法:用 `start_webui.bat` 自己跑
-4. **Web UI streaming 不是真·流式** — gradio 每 2 秒切一段送,不是字级别延迟
-   - 想要字级延迟:得用 vLLM + 真 streaming API(Windows 难装,WSL2 可行)
-5. **没做说话人分离** — 多个人说话会混在一起识别
-6. **浏览器录音限制** — Chrome/Edge 麦克风权限要"允许",HTTPS 或 localhost 才能用
-7. **Web UI 不支持历史音频** — 一次只处理实时流,要处理录音文件用 `note_taker.py` 改一下
+- WSL2 + vLLM for true streaming
+- Speaker diarization (pyannote.audio)
+- Translation glossary / custom term dictionary
+- Exporting notes to SRT / VTT for video subtitles
+- Tauri / Electron desktop wrapper to drop the browser
 
-## 🔮 未来可以做
+## Rollback
 
-- [ ] WSL2 跑 vLLM,接真 streaming API,延迟做到 200ms 内
-- [ ] 加说话人分离(pyannote.audio)
-- [ ] 历史音频文件拖拽识别
-- [ ] 时间戳 / SRT 字幕导出
-- [ ] 桌面端(用 Tauri / Electron 包装,免开浏览器)
-- [ ] 快捷键全局监听(系统级,任何窗口都能录音)
-- [ ] 多语言自动切换 + UI 提示
+All changes are in `web_ui.py`, `README.md`, `MR.md`, and `.gitignore`. The deleted `start.bat` and `note_taker.py` are still in the recycle bin. Reverting is a single `git revert` on the PR commit.
 
-## 🧪 验证步骤
+## Checklist for the reviewer
 
-```bash
-# 1. 验证 CUDA
-venv\Scripts\python -c "import torch; print(torch.cuda.is_available())"
-# 应输出 True
-
-# 2. 验证模型加载
-venv\Scripts\python smoke_test.py
-# 录 3 秒,应能输出中文文本
-
-# 3. 启动 Web UI
-venv\Scripts\python web_ui.py
-# 浏览器开 http://localhost:7860
-```
-
-## 📷 截图(可放实机截图)
-- Web UI 主界面(包含麦克风 + 增益滑块 + 笔记区)
-- 实时识别输出样例
-
-## 👤 测试人
-- 部署: Mavis (MiniMax Code)
-- 测试: 用户
-- 日期: 2026-07-29 ~ 07-30
+- [ ] `pip install -i https://pypi.tuna.tsinghua.edu.cn/simple langdetect sacremoses` succeeds
+- [ ] Translation models download on first use (no manual step)
+- [ ] Switching `UI Language` updates every label in the UI
+- [ ] Switching `Recognition Language` to `English` makes the model prefer English output
+- [ ] Setting `Translation` to `All -> English` produces English text in the translation box within 1-2 s of each Chinese utterance
+- [ ] `notes.md` and `translations.md` are git-ignored
+- [ ] `venv/`, `*.log`, `_tmp_ms/`, `*.safetensors` are all git-ignored
