@@ -20,8 +20,9 @@ smoke.log
 download.log
 install.log
 
-# Notes (用户生成的笔记,默认排除 — 隐私考虑)
+# Notes (用户生成的笔记/翻译记录,默认排除 — 隐私考虑)
 notes.md
+translations.md
 
 # Audio test outputs
 *.wav
