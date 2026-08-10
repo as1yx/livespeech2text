@@ -1,7 +1,7 @@
 """
 LiveSpeech2Text Web UI v4
 - v3: i18n, recognition language, real-time translation
-- v4: configurable port (LST_PORT env var), Notes section for future AI organization
+- v4: configurable port (LST_PORT env var), Notes section for manual notes
 """
 
 import os
@@ -118,21 +118,35 @@ COMMON_PORTS_HINT = """\
 **改端口方法:** 启动前设环境变量 `LST_PORT=7861` (Windows: `set LST_PORT=7861`),然后重启服务。端口在运行时不可改。"""
 
 # --- i18n ---
+# Note: asr_lang_choices and trans_choices use [(label, value), ...] format
+# so Gradio shows the label but stores the value.
+#
+# IMPORTANT: Qwen3-ASR 1.7B lowercases the language string before matching
+# against its supported list. It only supports 30 single languages
+# (Chinese, English, Cantonese, ...). It does NOT support mixed
+# (e.g. Chinese-English) or "Auto" as a value. So:
+#   - We pass `None` for "Auto" (model autodetects)
+#   - We don't include any mixed options (model rejects them all)
 LOCALES = {
     "English": {
         "subtitle": "**Speak naturally, pause 1-2 seconds.** Audio auto-segmented and recognized. Results save to `notes.md`.",
         "ui_lang": "UI Language",
         "asr_lang": "Recognition Language",
-        "asr_lang_options": ["Chinese", "Chinese-English mix", "English-Chinese mix", "English", "Auto"],
-        "asr_lang_values": ["Chinese", "Chinese-English", "English-Chinese", "English", "Auto"],
+        "asr_lang_choices": [
+            ("Chinese", "Chinese"),
+            ("English", "English"),
+            ("Auto (model detects)", "Auto"),
+        ],
         "translation_mode": "Translation",
-        "trans_off": "Off",
-        "trans_mostly_zh_en": "Mostly Chinese -> English",
-        "trans_mostly_en_zh": "Mostly English -> Chinese",
-        "trans_all_en": "All -> English",
-        "trans_all_zh": "All -> Chinese",
-        "gain_label": "Manual gain (1x - 8x)",
-        "gain_info": "1=no change, 8=amplify 8x",
+        "trans_choices": [
+            ("Off", "off"),
+            ("Mostly Chinese -> English", "mostly_zh_en"),
+            ("Mostly English -> Chinese", "mostly_en_zh"),
+            ("All -> English", "all_en"),
+            ("All -> Chinese", "all_zh"),
+        ],
+        "gain_label": "Manual gain (1x - 100x)",
+        "gain_info": "1=no change, 100=amplify 100x (mic too quiet? turn this up)",
         "agc_label": "Auto Normalize (AGC)",
         "agc_info": "Auto pull volume to target",
         "status": "Status (with RMS info)",
@@ -150,29 +164,33 @@ LOCALES = {
 
 **If mic is too quiet:** increase Manual gain or enable AGC.""",
         "port_info": "Server Port",
-        "user_notes": "Notes (manual, for future AI organization)",
-        "user_notes_placeholder": "AI 整理功能即将上线 — 在此输入或粘贴笔记,点 Save 保存",
+        "user_notes": "Notes (manual)",
+        "user_notes_placeholder": "Type or paste notes here. Click Save to write to notes_ai.md.",
         "user_notes_saved": "Saved to notes_ai.md",
         "user_notes_save": "Save",
         "tab_live": "🎤 Live / 实时",
         "tab_notes": "📝 Notes / 笔记",
-        "notes_ai_intro": "### Manual notes\nThis area is for your own notes — anything you want to remember, refine, or feed to a future AI organizer.\n\n- Auto-saved to `notes_ai.md` when you click **Save**\n- Not touched by the ASR stream (that's in the Live tab)\n- Coming soon: AI-powered organization, summarization, search",
-        "ai_organize_hint": "### 🤖 AI 整理 (DeepSeek 网页版)\n\n**操作步骤**\n1. 第一次在终端跑 `python test_deepseek.py --headed`,弹浏览器,扫码登录 DeepSeek,关掉\n2. 之后直接跑 `python ai_organize.py`,它会读当前笔记区内容,自动发到 DeepSeek 整理,结果追加回 `notes_ai.md`\n3. 用完的 `notes_ai.md` 内容点 **Save** 存到本地,刷新页面可看到\n\n**注意事项**\n- 只在本地用,**不会上传 GitHub**(相关文件已在 .gitignore)\n- 第一次要登录,之后 cookie 持久化,不用再登\n- 整理时间长(每次 30s~2min,看 DeepSeek 响应),别急\n- 整理质量看 DeepSeek 当下状态,忙时可能慢或失败\n\n**如果网页 AI 不能用了**\n- 自己手动整理(用 AI 整理就是省事,不是必需)\n- 换网页 AI:Kimi / 智谱清言 / 通义千问 等都行,把 `ai_organize.py` 里的 URL 和选择器换一下\n- 装本地模型:Ollama 跑 qwen2.5 / llama3,改脚本调本地 API\n- 完全跳过:这个 textbox 当普通笔记本用就行,功能不依赖 AI",
+        "notes_ai_intro": "### Manual notes\nThis area is for your own notes — anything you want to remember or refine.\n\n- Click **Save** to write to `notes_ai.md`\n- Not touched by the ASR stream (that's in the Live tab)",
     },
     "中文": {
         "subtitle": "**说话停顿 1-2 秒。** 音频自动分段识别,结果保存到 `notes.md`。",
         "ui_lang": "界面语言",
         "asr_lang": "识别语言",
-        "asr_lang_options": ["中文", "中英文混合", "英中文混合", "英文", "自动检测"],
-        "asr_lang_values": ["Chinese", "Chinese-English", "English-Chinese", "English", "Auto"],
+        "asr_lang_choices": [
+            ("中文", "Chinese"),
+            ("英文", "English"),
+            ("自动检测(模型自判)", "Auto"),
+        ],
         "translation_mode": "翻译",
-        "trans_off": "不翻译",
-        "trans_mostly_zh_en": "大量中文 → 英文",
-        "trans_mostly_en_zh": "大量英文 → 中文",
-        "trans_all_en": "全部 → 英文",
-        "trans_all_zh": "全部 → 中文",
-        "gain_label": "手动增益 (1x - 8x)",
-        "gain_info": "1=不变,8=放大 8 倍",
+        "trans_choices": [
+            ("不翻译", "off"),
+            ("大量中文 → 英文", "mostly_zh_en"),
+            ("大量英文 → 中文", "mostly_en_zh"),
+            ("全部 → 英文", "all_en"),
+            ("全部 → 中文", "all_zh"),
+        ],
+        "gain_label": "手动增益 (1x - 100x)",
+        "gain_info": "1=不变,100=放大 100 倍(麦克风太小?调这个)",
         "agc_label": "自动归一化 (AGC)",
         "agc_info": "自动把音量拉到目标水平",
         "status": "状态(含 RMS 音量信息)",
@@ -190,14 +208,13 @@ LOCALES = {
 
 **声音小怎么办:** 调大"手动增益"或勾选"自动归一化(AGC)""",
         "port_info": "服务端口",
-        "user_notes": "笔记(手动,为未来 AI 整理准备)",
-        "user_notes_placeholder": "AI 整理功能即将上线 — 在此输入或粘贴笔记,点 Save 保存",
+        "user_notes": "笔记（手动）",
+        "user_notes_placeholder": "在此输入或粘贴笔记,点 Save 保存到 notes_ai.md",
         "user_notes_saved": "已保存到 notes_ai.md",
         "user_notes_save": "保存",
         "tab_live": "🎤 Live / 实时",
         "tab_notes": "📝 Notes / 笔记",
-        "notes_ai_intro": "### 手动笔记\n这个区是给你自己写东西用的——任何想记住的、想整理的、以后喂给 AI 整理的都可以。\n\n- 点 **Save** 自动存到 `notes_ai.md`\n- ASR 转写不会动这个文件(那是 Live tab 的事)\n- 即将上线: AI 自动整理、摘要、检索",
-        "ai_organize_hint": "### 🤖 AI 整理 (DeepSeek 网页版)\n\n**操作步骤**\n1. 第一次在终端跑 `python test_deepseek.py --headed`,弹浏览器,扫码登录 DeepSeek,关掉\n2. 之后直接跑 `python ai_organize.py`,它会读当前笔记区内容,自动发到 DeepSeek 整理,结果追加回 `notes_ai.md`\n3. 用完的 `notes_ai.md` 内容点 **Save** 存到本地,刷新页面可看到\n\n**注意事项**\n- 只在本地用,**不会上传 GitHub**(相关文件已在 .gitignore)\n- 第一次要登录,之后 cookie 持久化,不用再登\n- 整理时间长(每次 30s~2min,看 DeepSeek 响应),别急\n- 整理质量看 DeepSeek 当下状态,忙时可能慢或失败\n\n**如果网页 AI 不能用了**\n- 自己手动整理(用 AI 整理就是省事,不是必需)\n- 换网页 AI:Kimi / 智谱清言 / 通义千问 等都行,把 `ai_organize.py` 里的 URL 和选择器换一下\n- 装本地模型:Ollama 跑 qwen2.5 / llama3,改脚本调本地 API\n- 完全跳过:这个 textbox 当普通笔记本用就行,功能不依赖 AI",
+        "notes_ai_intro": "### 手动笔记\n这个区是给你自己写东西用的——任何想记住的、想整理的都可以。\n\n- 点 **Save** 自动存到 `notes_ai.md`\n- ASR 转写不会动这个文件(那是 Live tab 的事)",
     },
 }
 
@@ -277,7 +294,7 @@ def ensure_files():
     for path, title in [
         (NOTES_PATH, "# LiveSpeech2Text 笔记"),
         (TRANSLATIONS_PATH, "# LiveSpeech2Text 翻译"),
-        (USER_NOTES_PATH, "# LiveSpeech2Text 笔记(AI 整理)"),
+        (USER_NOTES_PATH, "# LiveSpeech2Text 笔记（手动）"),
     ]:
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as f:
@@ -346,7 +363,7 @@ def apply_gain(audio_data: np.ndarray, gain: float, auto_norm: bool, target_rms:
     actual_gain = float(gain)
     if auto_norm and orig_rms > 1e-6:
         needed = target_rms / orig_rms
-        actual_gain = float(np.clip(needed, 1.0, 10.0))
+        actual_gain = float(np.clip(needed, 1.0, 100.0))
     out = out * actual_gain
     peak = float(np.max(np.abs(out)))
     if peak > 0.95:
@@ -492,25 +509,19 @@ def build_ui():
                             label=LOCALES["English"]["mic"],
                         )
                         asr_lang_radio = gr.Radio(
-                            choices=LOCALES["English"]["asr_lang_options"],
+                            choices=LOCALES["English"]["asr_lang_choices"],
                             value="Chinese",
                             label=LOCALES["English"]["asr_lang"],
                         )
-                        gain_slider = gr.Slider(1.0, 8.0, value=1.0, step=0.5,
+                        gain_slider = gr.Slider(1.0, 100.0, value=1.0, step=1.0,
                                                   label=LOCALES["English"]["gain_label"],
                                                   info=LOCALES["English"]["gain_info"])
                         auto_norm = gr.Checkbox(False,
                                                   label=LOCALES["English"]["agc_label"],
                                                   info=LOCALES["English"]["agc_info"])
                         trans_mode_radio = gr.Radio(
-                            choices=[
-                                LOCALES["English"]["trans_off"],
-                                LOCALES["English"]["trans_mostly_zh_en"],
-                                LOCALES["English"]["trans_mostly_en_zh"],
-                                LOCALES["English"]["trans_all_en"],
-                                LOCALES["English"]["trans_all_zh"],
-                            ],
-                            value=LOCALES["English"]["trans_off"],
+                            choices=LOCALES["English"]["trans_choices"],
+                            value="off",
                             label=LOCALES["English"]["translation_mode"],
                         )
                         status = gr.Textbox(value=LOCALES["English"]["waiting"],
@@ -531,8 +542,6 @@ def build_ui():
             # ---- Tab 2: Notes (manual, AI prep) ----
             with gr.TabItem(LOCALES["English"]["tab_notes"], id="notes"):
                 notes_ai_intro = gr.Markdown(LOCALES["English"]["notes_ai_intro"])
-                # v4+: AI organize (DeepSeek via Playwright) hint
-                ai_organize_hint = gr.Markdown(LOCALES["English"]["ai_organize_hint"])
                 user_notes_input = gr.Textbox(
                     value=load_user_notes(),
                     label=LOCALES["English"]["user_notes"],
@@ -594,12 +603,12 @@ def build_ui():
             return {
                 subtitle_md: gr.update(value=t["subtitle"]),
                 audio_input: gr.update(label=t["mic"]),
-                asr_lang_radio: gr.update(choices=t["asr_lang_options"], value="Chinese", label=t["asr_lang"]),
+                asr_lang_radio: gr.update(choices=t["asr_lang_choices"], value="Chinese", label=t["asr_lang"]),
                 gain_slider: gr.update(label=t["gain_label"], info=t["gain_info"]),
                 auto_norm: gr.update(label=t["agc_label"], info=t["agc_info"]),
                 trans_mode_radio: gr.update(
-                    choices=[t["trans_off"], t["trans_mostly_zh_en"], t["trans_mostly_en_zh"], t["trans_all_en"], t["trans_all_zh"]],
-                    value=t["trans_off"],
+                    choices=t["trans_choices"],
+                    value="off",
                     label=t["translation_mode"],
                 ),
                 status: gr.update(value=t["waiting"], label=t["status"]),
@@ -611,7 +620,6 @@ def build_ui():
                 user_notes_input: gr.update(label=t["user_notes"], placeholder=t["user_notes_placeholder"]),
                 save_notes_btn: gr.update(value=t["user_notes_save"]),
                 notes_ai_intro: gr.update(value=t["notes_ai_intro"]),
-                ai_organize_hint: gr.update(value=t["ai_organize_hint"]),
                 port_md: gr.update(
                     value=f"🟢 **{t['port_info']}:** `{ACTIVE_PORT}` ({PORT_SOURCE_MSG})\n\n{COMMON_PORTS_HINT}"
                 ),
@@ -621,7 +629,7 @@ def build_ui():
                               outputs=[subtitle_md, audio_input, asr_lang_radio, gain_slider,
                                        auto_norm, trans_mode_radio, status, notes_display,
                                        translation_display, reload_btn, clear_btn, instructions_md,
-                                       user_notes_input, save_notes_btn, notes_ai_intro, ai_organize_hint, port_md])
+                                       user_notes_input, save_notes_btn, notes_ai_intro, port_md])
 
     return app
 
