@@ -1,0 +1,26 @@
+# LiveSpeech2Text - direct dependencies
+# Install torch first with the right CUDA build, then the rest:
+#   pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -r requirements.txt
+#
+# Note: torch is pinned below WITHOUT the local CUDA tag. If you need CUDA,
+# install it separately as shown above (pip will keep it).
+#
+# Model download uses ModelScope (huggingface.co times out from China):
+#   pip install modelscope
+#   modelscope download --model Qwen/Qwen3-ASR-1.7B --local_dir <path>
+
+accelerate==1.12.0
+gradio==6.17.3
+huggingface_hub==0.36.2
+langdetect==1.0.9
+librosa==0.11.0
+modelscope==1.39.0
+numpy==2.4.6
+qwen-asr==0.0.6
+sacremoses==0.1.1
+safetensors==0.8.0
+sounddevice==0.5.5
+soundfile==0.14.0
+torch==2.5.1+cu121
+transformers==4.57.6

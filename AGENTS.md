@@ -106,6 +106,8 @@ livespeech2text/                    ← 唯一目录，git 仓库 + venv
 ├── start_webui.ps1                   ← PowerShell 启动器（读 $env:LST_PORT）
 ├── check_audio.py                    ← 麦克风设备自检
 ├── smoke_test.py                     ← ASR 端到端冒烟测试
+├── requirements.txt                  ← 直接依赖（含 CUDA 版 torch 安装说明）
+├── requirements-lock.txt             ← 完整 pip freeze，可完全复现
 ├── README.md                         ← 用户文档（English + 中文）
 ├── POWERSHELL.md                     ← PS 5.1 vs 7+ 兼容性说明
 ├── MR.md                             ← PR 描述模板（English + 中文）
@@ -280,7 +282,12 @@ Test-NetConnection -ComputerName localhost -Port 7860 -InformationLevel Quiet -W
 
 接手人按这个顺序做：
 
-- [ ] 装依赖：`pip install -r requirements.txt`（**注意：当前仓库没有 requirements.txt，需要补**）或直接用现成 `venv/`
+- [ ] 装依赖（**先装 torch 的 CUDA 版，再装其余**）：
+  ```bash
+  pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+  pip install -r requirements.txt
+  ```
+  要完全复现现环境用 `requirements-lock.txt`（105 行完整 freeze）
 - [ ] 确认模型已下载（ASR + opus-mt），没有的话走 ModelScope 镜像拉
 - [ ] `git checkout feat/v4-port-and-notes`（或从 `main` 起新分支做 v5）
 - [ ] 起服务 → http://localhost:7860 → 说句话验证 → 看 notes.md 有字
@@ -289,7 +296,7 @@ Test-NetConnection -ComputerName localhost -Port 7860 -InformationLevel Quiet -W
 - [ ] v5 开工前先读本文档第 7 节（约定）和第 8 节（坑），避免重复踩
 
 ### 待补的短板
-- **没有 `requirements.txt`** — 依赖全靠记忆重建，接手人容易装错版本。**建议补一个**
 - 没有自动化测试（`smoke_test.py` 是手跑的，不是 pytest）
 - 没有 CI
 - `main` 落后于 v3/v4，长期不合会导致分支混乱，建议尽早把 v4 PR 合进 `main`
+- `feat/v3-i18n-translation` 分支是废弃的中间产物（功能已被 v4 吸收），可以删掉
