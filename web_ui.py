@@ -1,7 +1,7 @@
 """
 LiveSpeech2Text Web UI v4
 - v3: i18n, recognition language, real-time translation
-- v4: configurable port (LST_PORT env var), Notes section for manual notes
+- v4: configurable port (LST_PORT env var), Notes section for manual notes, save raw recordings to D:/LiveSpeech2Text/recordings
 """
 
 import os
@@ -15,6 +15,7 @@ import numpy as np
 import torch
 import datetime
 import threading
+import wave
 from queue import Queue
 from concurrent.futures import ThreadPoolExecutor
 
@@ -28,6 +29,7 @@ TRANSLATIONS_PATH = "translations.md"
 USER_NOTES_PATH = "notes_ai.md"  # v4: user-typed notes (separate from ASR auto-notes)
 SAMPLE_RATE = 16000
 DEVICE = "cuda:0"
+RECORDINGS_DIR = r"D:\LiveSpeech2Text\recordings"  # v4: raw audio recordings (16k mono WAV)
 
 # --- Port selection (v4) ---
 # Priority: LST_PORT env var > config.json > DEFAULT_PORT
@@ -170,6 +172,10 @@ LOCALES = {
         "user_notes_save": "Save",
         "tab_live": "🎤 Live / 实时",
         "tab_notes": "📝 Notes / 笔记",
+        "rec_status_label": "Recording status",
+        "rec_idle": "Not recording",
+        "rec_start": "🎙️ Start Recording",
+        "rec_stop": "⏹ Stop Recording",
         "notes_ai_intro": "### Manual notes\nThis area is for your own notes — anything you want to remember or refine.\n\n- Click **Save** to write to `notes_ai.md`\n- Not touched by the ASR stream (that's in the Live tab)",
     },
     "中文": {
@@ -214,6 +220,10 @@ LOCALES = {
         "user_notes_save": "保存",
         "tab_live": "🎤 Live / 实时",
         "tab_notes": "📝 Notes / 笔记",
+        "rec_status_label": "录音状态",
+        "rec_idle": "未录音",
+        "rec_start": "🎙️ 开始录音",
+        "rec_stop": "⏹ 停止录音",
         "notes_ai_intro": "### 手动笔记\n这个区是给你自己写东西用的——任何想记住的、想整理的都可以。\n\n- 点 **Save** 自动存到 `notes_ai.md`\n- ASR 转写不会动这个文件(那是 Live tab 的事)",
     },
 }
@@ -386,7 +396,7 @@ def detect_major_language(text):
 
 
 # --- Main callback ---
-def transcribe_audio(audio, gain, auto_norm, asr_lang_value, trans_mode_value):
+def transcribe_audio(audio, gain, auto_norm, asr_lang_value, trans_mode_value, rec_value):
     if audio is None:
         return "Waiting...", load_notes(), load_translations()
     sr, audio_data = audio
@@ -399,6 +409,14 @@ def transcribe_audio(audio, gain, auto_norm, asr_lang_value, trans_mode_value):
     if sr != SAMPLE_RATE:
         import librosa
         audio_data = librosa.resample(audio_data, orig_sr=sr, target_sr=SAMPLE_RATE)
+
+    # v4: Write raw audio to WAV file if recording is active.
+    # Note: gr.State is auto-unpacked in click callbacks, so `rec_value` is
+    # already the state value (a tuple (wave_obj, path) or None).
+    if rec_value is not None:
+        pcm16 = np.clip(audio_data, -1.0, 1.0)
+        pcm16 = (pcm16 * 32767).astype(np.int16)
+        rec_value[0].writeframes(pcm16.tobytes())
 
     duration = len(audio_data) / SAMPLE_RATE
     if duration < 0.3:
@@ -434,6 +452,41 @@ def transcribe_audio(audio, gain, auto_norm, asr_lang_value, trans_mode_value):
             translator.translate_async(text, direction, _on_translate)
 
     return status, updated_notes, load_translations()
+
+
+# --- Recording controls (v4) ---
+def _on_rec_start(rec_value):
+    """Open a new WAV file in RECORDINGS_DIR, return (state, status_text).
+
+    `rec_value` is the auto-unpacked gr.State value: None or (wave_obj, path).
+    """
+    if rec_value is not None:
+        _, path = rec_value
+        return rec_value, f"⚠️ 已在录音中: {path}"
+    try:
+        os.makedirs(RECORDINGS_DIR, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(RECORDINGS_DIR, f"recording_{timestamp}.wav")
+        wf = wave.open(path, "wb")
+        wf.setnchannels(1)
+        wf.setsampwidth(2)  # 16-bit PCM
+        wf.setframerate(SAMPLE_RATE)
+        return (wf, path), f"🔴 录音中 → {path}"
+    except Exception as e:
+        return rec_value, f"❌ 启动录音失败: {e}"
+
+
+def _on_rec_stop(rec_value):
+    """Close the current WAV file, return (None, status_text)."""
+    if rec_value is None:
+        return rec_value, "ℹ️ 当前没在录音"
+    try:
+        wf, path = rec_value
+        wf.close()
+        size_mb = os.path.getsize(path) / (1024 * 1024)
+        return None, f"✅ 已保存 ({size_mb:.2f} MB): {path}"
+    except Exception as e:
+        return None, f"❌ 停止录音失败: {e}"
 
 
 def _resolve_direction(text, mode):
@@ -527,6 +580,14 @@ def build_ui():
                         status = gr.Textbox(value=LOCALES["English"]["waiting"],
                                              label=LOCALES["English"]["status"],
                                              interactive=False, lines=3)
+                        # v4: Recording controls (saves raw audio to D:\LiveSpeech2Text\recordings\)
+                        rec_state = gr.State(value=None)
+                        rec_status = gr.Textbox(value=LOCALES["English"]["rec_idle"],
+                                                 label=LOCALES["English"]["rec_status_label"],
+                                                 interactive=False, lines=1)
+                        with gr.Row():
+                            rec_start_btn = gr.Button(LOCALES["English"]["rec_start"], size="sm", variant="primary")
+                            rec_stop_btn = gr.Button(LOCALES["English"]["rec_stop"], size="sm", variant="stop")
                         with gr.Row():
                             reload_btn = gr.Button(LOCALES["English"]["reload"], size="sm")
                             clear_btn = gr.Button(LOCALES["English"]["clear"], size="sm", variant="stop")
@@ -560,7 +621,7 @@ def build_ui():
         # ASR stream (Live tab)
         audio_input.stream(
             fn=transcribe_audio,
-            inputs=[audio_input, gain_slider, auto_norm, asr_lang_radio, trans_mode_radio],
+            inputs=[audio_input, gain_slider, auto_norm, asr_lang_radio, trans_mode_radio, rec_state],
             outputs=[status, notes_display, translation_display],
             stream_every=2.0,
             time_limit=3600,
@@ -568,6 +629,10 @@ def build_ui():
 
         reload_btn.click(load_notes, outputs=notes_display)
         clear_btn.click(lambda: clear_files(), outputs=[notes_display, translation_display])
+
+        # v4: Recording buttons
+        rec_start_btn.click(_on_rec_start, inputs=[rec_state], outputs=[rec_state, rec_status])
+        rec_stop_btn.click(_on_rec_stop, inputs=[rec_state], outputs=[rec_state, rec_status])
 
         # v4: Save user notes
         def _on_save_user_notes(text):
@@ -620,6 +685,9 @@ def build_ui():
                 user_notes_input: gr.update(label=t["user_notes"], placeholder=t["user_notes_placeholder"]),
                 save_notes_btn: gr.update(value=t["user_notes_save"]),
                 notes_ai_intro: gr.update(value=t["notes_ai_intro"]),
+                rec_status: gr.update(value=t["rec_idle"], label=t["rec_status_label"]),
+                rec_start_btn: gr.update(value=t["rec_start"]),
+                rec_stop_btn: gr.update(value=t["rec_stop"]),
                 port_md: gr.update(
                     value=f"🟢 **{t['port_info']}:** `{ACTIVE_PORT}` ({PORT_SOURCE_MSG})\n\n{COMMON_PORTS_HINT}"
                 ),
@@ -629,7 +697,8 @@ def build_ui():
                               outputs=[subtitle_md, audio_input, asr_lang_radio, gain_slider,
                                        auto_norm, trans_mode_radio, status, notes_display,
                                        translation_display, reload_btn, clear_btn, instructions_md,
-                                       user_notes_input, save_notes_btn, notes_ai_intro, port_md])
+                                       user_notes_input, save_notes_btn, notes_ai_intro,
+                                       rec_status, rec_start_btn, rec_stop_btn, port_md])
 
     return app
 
